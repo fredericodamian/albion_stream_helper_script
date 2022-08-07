@@ -5,6 +5,11 @@ SEP = ";"
 DEFAULT_RECORD_FILE_DIRECTORY_PATH = DEFAULTBASE
 RECORD_FIGHT_TIME_HOTKEY_ID = obs.OBS_INVALID_HOTKEY_ID
 RECORD_FILE_PATH = nil
+CLEAR_RECORD_STARTED = false
+GLOBAL_SETTINGS = nil
+DEBUG_MODE = false
+
+
 function script_description()
     return [[
     <center>
@@ -34,7 +39,13 @@ function script_properties()
     )
     obs.obs_property_set_modified_callback(record_dir_prop, on_record_file_directory_path_modified)
     obs.obs_properties_add_button(props, "manual_record_button", "Record now", on_record_fight_time_hotkey_clicked)
-    obs.obs_properties_add_button(props, "reset_records_button", "Reset Records", reset_records_button_clicked)
+    obs.obs_properties_add_button(props, "clear_records_button", "Clear Records", clear_records_button_clicked)
+    obs.obs_properties_add_button(props, "confirm_clear_records_button", "Confirm", confirm_clear_records_button_clicked)
+    obs.obs_properties_add_button(props, "cancel_clear_records_button", "Cancel", cancel_clear_records_button_clicked)
+
+    set_visibility_clear_records_confirmation(props, CLEAR_RECORD_STARTED)
+
+    obs.obs_properties_apply_settings(props, GLOBAL_SETTINGS)
     return props
 end
 
@@ -44,11 +55,13 @@ function script_defaults(settings)
 end
 
 function script_update(settings)
+    GLOBAL_SETTINGS = settings
     update_record_file_variable(settings)
 end
 
 function script_load(settings)
   RECORD_FIGHT_TIME_HOTKEY_ID = obs.obs_hotkey_register_frontend(script_path(), "Record Fight Time", on_record_fight_time_hotkey_clicked)
+  CLEAR_RECORD_STARTED = false
   local hotkey_save_array = obs.obs_data_get_array(settings, "record_fight_time_hotkey")
   obs.obs_hotkey_load(RECORD_FIGHT_TIME_HOTKEY_ID, hotkey_save_array)
   obs.obs_data_array_release(hotkey_save_array)
@@ -56,7 +69,7 @@ function script_load(settings)
 end
 
 function script_unload()
-
+    CLEAR_RECORD_STARTED = false
 end
 
 function script_save(settings)
@@ -70,7 +83,7 @@ function on_record_fight_time_hotkey_clicked(pressed)
     local streaming_output = obs.obs_frontend_get_streaming_output();
 
     -- Check if its streaming
-	if streaming_output == nil then
+	if DEBUG_MODE == false and streaming_output == nil then
         error("Can't get streaming duration because you're not streaming!")
         return nil
     end
@@ -126,7 +139,7 @@ function get_current_time_streaming()
     local streaming_output = obs.obs_frontend_get_streaming_output();
 
 	-- Check if its streaming
-	if streaming_output == nil then
+	if DEBUG_MODE == false and streaming_output == nil then
         error("Can't get streaming duration because you're not streaming!")
         return "STREAMING OFF"
     end
@@ -160,11 +173,40 @@ function get_current_time_streaming()
     return streaming_duration_string
 end
 
-function reset_records_button_clicked(pressed)
-    if not file_exists(RECORD_FILE_PATH) then
-        return
+function clear_records_button_clicked(props, prop, data)
+    if not file_exists(RECORD_FILE_PATH) or CLEAR_RECORD_STARTED then
+        return false
+    end
+
+    CLEAR_RECORD_STARTED = true
+    set_visibility_clear_records_confirmation(props, true)
+    return true
+end
+
+function confirm_clear_records_button_clicked(props, prop, data)
+    if not CLEAR_RECORD_STARTED then
+        return false
     end
 
     os.remove(RECORD_FILE_PATH)
     create_fight_record_file()
+    CLEAR_RECORD_STARTED = false
+    set_visibility_clear_records_confirmation(props, false)
+    return true
+end
+
+function cancel_clear_records_button_clicked(props, prop, data)
+    if not CLEAR_RECORD_STARTED then
+        return false
+    end
+
+    CLEAR_RECORD_STARTED = false
+    set_visibility_clear_records_confirmation(props, false)
+    return true
+end
+
+function set_visibility_clear_records_confirmation(props, mode)
+    obs.obs_property_set_enabled(obs.obs_properties_get(props, "clear_records_button"), not mode)
+    obs.obs_property_set_visible(obs.obs_properties_get(props, "confirm_clear_records_button"), mode)
+    obs.obs_property_set_visible(obs.obs_properties_get(props, "cancel_clear_records_button"), mode)
 end
